@@ -1,0 +1,769 @@
+---
+title: "Ameriflux Data Submission Landscape Flux"
+author: "Riasad Bin Mahbub and Benjamin Runkle"
+date: "2024-05-13"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+pander::panderOptions("table.split.table", 120)
+
+```
+
+## Introduction and instruction links
+
+This is an R Markdown document. In this document we are trying to compile the information of the landscape flux 2018-2023 data for AmeriFlux submission. The guidelines for this submission can be obtained from these links:
+
+- [YTvideo AMP webinar series: Submitting BADM in CSV format](https://www.youtube.com/watch?v=1dyG6OMnfdM&t=11s)
+- [YTvideo AMP webinar series: Post-submission data life cycle: FP-In to BASE publishing](https://www.youtube.com/watch?v=wS95r9JbbB0&t=2336s)
+- [AmeriFlux submission instructions](https://ameriflux.lbl.gov/data/badm/badm-submission-instructions/#)
+- [AmeriFlux Data Submission PDF](https://ameriflux.lbl.gov/wp-content/uploads/2019/11/20191026-AMF-Data-Submission-HChu.pdf)
+- [AmeriFlux Variable Information Instructions](https://ameriflux.lbl.gov/sites/variable-information/variable-information-instructions/)
+- [Uploading Half-Hourly/Hourly Data to AmeriFlux](https://ameriflux.lbl.gov/data/uploading-half-hourly-hourly-data/)
+
+### Guidelines 
+#### Time format and Null values 
+1. The first two column are TIMESTAMP_START and TIMESTAMP_END (ISO time format: YYYYMMDDHHMM e.g., 201810220930)  <br>
+2. Dont convert the scientific notations in timestamps  <br>
+3. An hour column to check the daily data
+
+#### Consistent Variable names 
+1. Do support list of common variable names (From the table)<br>
+2. Use the exact variable names and the units <br>
+3. Very first on the list, what to do with the data, remove the known values  <br>
+
+#### Data quality check
+1. U-star filtering of the data  <br>
+2. CSV is a delimited text file that uses a comma to separate values  <br>
+3. Convert NA and NaN at the end. 
+
+## Location of the files
+The location of the data can be obtained from these directories. Shared directory is the directory of the landscape flux group where the data are kept. The data were copied from the shared directory to local directory (rbmhabub's computer) to do the processing of the data
+
+In shared directory: 
+
+Way3 Directory: "Y:/Rice/MasterFileSets/Way3/2021_11_20" 
+
+Way4 Directory: "Y:/Rice/MasterFileSets/Way4/2021_11_20" 
+
+In local directory:
+
+
+Way3 Directory: "C:/Users/rbmahbub/Documents/RProjects/AmerifluxDataSubmission_LandscapeFlux/Data/Way3" 
+
+Way4 Directory: "C:/Users/rbmahbub/Documents/RProjects/AmerifluxDataSubmission_LandscapeFlux/Data/Way4" 
+
+```{r}
+####################################
+####Check the required columns
+######################################
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+
+# Function to process each dataset (for TIMESTAMP and derived columns)
+process_data <- function(data) {
+  # Create TIMESTAMP_START and TIMESTAMP_END columns
+  data <- cbind(TIMESTAMP_START = NA, TIMESTAMP_END = NA, data)
+  
+  # Convert TIMESTAMP column to POSIXct format
+  data$TIMESTAMP <- ymd_hms(data$TIMESTAMP)
+  
+  # Create TIMESTAMP_START in the desired format
+  data$TIMESTAMP_START <- format(data$TIMESTAMP, "%Y%m%d%H%M")
+  
+  # Create TIMESTAMP_END by adding 30 minutes to TIMESTAMP and formatting it
+  data$TIMESTAMP_END <- format(data$TIMESTAMP + minutes(30), "%Y%m%d%H%M")
+  
+  # Create additional columns: HOUR, MONTH, DAY_OF_YEAR
+  data$HOUR <- hour(data$TIMESTAMP)
+  data$MONTH <- month(data$TIMESTAMP)
+  data$DOY <- yday(data$TIMESTAMP)
+  
+  return(data)
+}
+
+way3_directory <- "C:/Users/rbmahbub/Documents/RProjects/AmerifluxDataSubmission_LandscapeFlux/Data/Way3"
+way4_directory <- "C:/Users/rbmahbub/Documents/RProjects/AmerifluxDataSubmission_LandscapeFlux/Data/Way4"
+
+# List all CSV files in the directories
+way3_files <- list.files(way3_directory, pattern = "\\.csv$", full.names = TRUE)
+way4_files <- list.files(way4_directory, pattern = "\\.csv$", full.names = TRUE)
+
+# Read the CSV files into lists of dataframes for both Way3 and Way4
+way3_data <- lapply(way3_files, read.csv)
+way4_data <- lapply(way4_files, read.csv)
+
+# Apply the processing function to all datasets in Way3 and Way4
+way3_processed_data <- lapply(way3_data, process_data)
+way4_processed_data <- lapply(way4_data, process_data)
+
+# List of required columns
+required_columns <- c(
+  "TIMESTAMP_START", "TIMESTAMP_END", "x_70_", "x_90_", "x_peak", "ch4_mole_fraction", 
+  "ch4_mixing_ratio", "co2_mole_fraction", "co2_mixing_ratio", "co2_flux", "ch4_flux", 
+  "h2o_mole_fraction", "h2o_mixing_ratio", "h2o_flux", "H", "LE", "H_strg", "LE_strg", 
+  "air_pressure", "RH", "sonic_temperature", "qc_co2_flux", "qc_ch4_flux", "qc_H", 
+  "qc_LE", "qc_Tau", "co2_var", "co2_strg", "ch4_strg", "u_var", "v_var", "w_var", 
+  "wind_dir", "wind_speed", "max_wind_speed", "X_z_d__L", "air_temperature", "VPD", 
+  "LW_IN_Avg", "LW_OUT_Avg", "PAR_IN_Avg", "PAR_OUT_Avg", "SW_IN_Avg", "SW_OUT_Avg", 
+  "SWC_1_1_1", "L", "Tau"
+)
+
+# Function to check for missing columns and print file names
+check_missing_columns <- function(data, required_columns, filename) {
+  missing_columns <- setdiff(required_columns, names(data))
+  if (length(missing_columns) == 0) {
+    cat("The file", filename, "has all the required columns.\n")
+  } else {
+    cat("The file", filename, "is missing the following columns:\n")
+    print(missing_columns)
+  }
+}
+
+# Check Way3 files for missing columns
+for (i in seq_along(way3_processed_data)) {
+  check_missing_columns(way3_processed_data[[i]], required_columns, way3_files[i])
+}
+
+# Check Way4 files for missing columns
+for (i in seq_along(way4_processed_data)) {
+  check_missing_columns(way4_processed_data[[i]], required_columns, way4_files[i])
+}
+```
+
+
+
+```{r}
+
+# Define the directories
+# Define the directories
+way3_directory <- "C:/Users/rbmahbub/Documents/RProjects/AmerifluxDataSubmission_LandscapeFlux/Data/Way3"
+way4_directory <- "C:/Users/rbmahbub/Documents/RProjects/AmerifluxDataSubmission_LandscapeFlux/Data/Way4"
+
+# Define the files to read
+way3_files_to_read <- c("Way3 2018.csv", "Way3 2019.csv", "Way3 2020.csv", "Way3 2021.csv", "Way3 2023.csv", "Way3 2024.csv")
+way4_files_to_read <- c("Way4 2018.csv", "Way4 2019.csv", "Way4 2020.csv", "Way4 2021.csv", "Way4 2023.csv", "Way4 2024.csv")
+
+
+# Mapping of equivalent column names
+column_mapping <- list(
+  "x_70_" = c("x_70."),
+  "x_90_" = c("x_90."),
+  "co2_flux" = c("NEE"),
+  "RH" = c("rH"),
+  "wind_dir" = c("WD_EC"),
+  "X_z_d__L" = c("X.z.d..L"),
+  "air_temperature" = c("Tair"),
+  "SW_IN_Avg" = c( "Rg")  # Multiple possible names
+)
+
+# Function to apply column name mapping
+apply_column_mapping <- function(data) {
+  for (old_name in names(column_mapping)) {
+    new_name <- column_mapping[[old_name]]
+    if (new_name %in% names(data) && !old_name %in% names(data)) {
+      names(data)[names(data) == new_name] <- old_name
+    }
+  }
+  return(data)
+}
+
+# Read and process Way3 and Way4 data
+way3_data <- lapply(way3_files_to_read, function(filename) {
+  file_path <- file.path(way3_directory, filename)
+  data <- read.csv(file_path)
+  apply_column_mapping(data) # Apply column name mapping
+})
+
+way4_data <- lapply(way4_files_to_read, function(filename) {
+  file_path <- file.path(way4_directory, filename)
+  data <- read.csv(file_path)
+  apply_column_mapping(data) # Apply column name mapping
+})
+
+# Function to filter and rename columns
+filter_and_rename <- function(data) {
+  data_filtered <- data %>%
+    select(
+      TIMESTAMP_START, TIMESTAMP_END, x_70_, `x_90_`, x_peak, ch4_mole_fraction, 
+      ch4_mixing_ratio, co2_mole_fraction, co2_mixing_ratio, co2_flux, ch4_flux, 
+      h2o_mole_fraction, h2o_mixing_ratio, h2o_flux, H, LE, H_strg, LE_strg, 
+      air_pressure, RH, sonic_temperature, qc_co2_flux, qc_ch4_flux, qc_H, qc_LE, 
+      qc_Tau, co2_var, co2_strg, ch4_strg, u_var, v_var, w_var, wind_dir, wind_speed, 
+      max_wind_speed, X_z_d__L, air_temperature, VPD, LW_IN_Avg, LW_OUT_Avg, 
+      PAR_IN_Avg, PAR_OUT_Avg, SW_IN_Avg, SW_OUT_Avg, SWC_1_1_1, L, Tau
+    )
+  
+  # Rename filtered columns
+  data_renamed <- data_filtered %>%
+    rename(
+      TIMESTAMP_START = TIMESTAMP_START, TIMESTAMP_END = TIMESTAMP_END, 
+      FETCH_70 = `x_70_`, FETCH_90 = `x_90_`, FETCH_MAX = x_peak, CH4 = ch4_mole_fraction, 
+      CH4_MIXING_RATIO = ch4_mixing_ratio, CO2 = co2_mole_fraction, CO2_MIXING_RATIO = co2_mixing_ratio, 
+      FC = co2_flux, FCH4 = ch4_flux, H2O = h2o_mole_fraction, H2O_MIXING_RATIO = h2o_mixing_ratio, 
+      FH2O = h2o_flux, H = H, LE = LE, SH = H_strg, SLE = LE_strg, PA = air_pressure, RH = RH, 
+      T_SONIC = sonic_temperature, FC_SSITC_TEST = qc_co2_flux, FCH4_SSITC_TEST = qc_ch4_flux, 
+      H_SSITC_TEST = qc_H, LE_SSITC_TEST = qc_LE, TAU_SSITC_TEST = qc_Tau, CO2_SIGMA = co2_var, 
+      SC = co2_strg, SCH4 = ch4_strg, U_SIGMA = u_var, V_SIGMA = v_var, W_SIGMA = w_var, 
+      WD = wind_dir, WS = wind_speed, WS_MAX = max_wind_speed, ZL = X_z_d__L, TA = air_temperature, 
+      VPD = VPD, LW_IN = LW_IN_Avg, LW_OUT = LW_OUT_Avg, PPFD_IN = PAR_IN_Avg, PPFD_OUT = PAR_OUT_Avg, 
+      SW_IN = SW_IN_Avg, SW_OUT = SW_OUT_Avg, SWC = SWC_1_1_1, MO_LENGTH = L, TAU = Tau
+    )
+  
+  return(data_renamed)
+}
+
+# Process Way3 and Way4 data
+way3_processed_data <- lapply(way3_data, process_data)
+way4_processed_data <- lapply(way4_data, process_data)
+
+# Apply filtering and renaming
+way3_filtered_renamed <- lapply(way3_processed_data, filter_and_rename)
+way4_filtered_renamed <- lapply(way4_processed_data, filter_and_rename)
+
+# Define save directories
+way3_save_directory <- "C:/Users/rbmahbub/Documents/RProjects/AmerifluxDataSubmission_LandscapeFlux/Data/AFguidedSubmitted/Way3"
+way4_save_directory <- "C:/Users/rbmahbub/Documents/RProjects/AmerifluxDataSubmission_LandscapeFlux/Data/AFguidedSubmitted/Way4"
+
+# Function to save filtered data
+save_filtered_data <- function(data, filename, directory) {
+  data$TIMESTAMP_START <- as.character(data$TIMESTAMP_START)
+  data$TIMESTAMP_END <- as.character(data$TIMESTAMP_END)
+  data[is.na(data)] <- -9999
+  data[is.nan.data.frame(data)] <- -9999
+  
+  file_path <- file.path(directory, filename)
+  write.csv(data, file = file_path, row.names = FALSE)
+  
+  cat(filename, "saved successfully to", directory, "\n")
+}
+
+# Assign names to the processed Way3 data
+names(way3_filtered_renamed) <- way3_files_to_read
+
+# Assign names to the processed Way4 data
+names(way4_filtered_renamed) <- way4_files_to_read
+
+
+# Save Way3 data
+for (i in seq_along(way3_filtered_renamed)) {
+  filename <- names(way3_filtered_renamed)[i]
+  save_filtered_data(way3_filtered_renamed[[i]], filename, way3_save_directory)
+}
+
+# Save Way4 data
+for (i in seq_along(way4_filtered_renamed)) {
+  filename <- names(way4_filtered_renamed)[i]
+  save_filtered_data(way4_filtered_renamed[[i]], filename, way4_save_directory)
+}
+```
+
+## Reading the files and fixing the timestamp: Time format and Null values 
+```{r }
+# Load necessary library
+library(lubridate)
+# Set the directory path and file name
+directory_path <- "C:/Users/rbmahbub/Documents/RProjects/AmerifluxDataSubmission_LandscapeFlux/Data/Way3"
+file_name <- "Way3 2018.csv"
+file_path <- file.path(directory_path, file_name)
+
+# Read the CSV file
+way3_2018_data <- read.csv(file_path)
+
+# Create TIMESTAMP_START and TIMESTAMP_END columns
+way3_2018_data <- cbind(TIMESTAMP_START = NA, TIMESTAMP_END = NA, way3_2018_data)
+# Convert TIMESTAMP column to POSIXct format (1/1/2018  12:00:00 AM)
+way3_2018_data$TIMESTAMP <- ymd_hms(way3_2018_data$TIMESTAMP)
+# Create TIMESTAMP_START in the desired format
+way3_2018_data$TIMESTAMP_START <- format(way3_2018_data$TIMESTAMP, "%Y%m%d%H%M")
+
+# Create TIMESTAMP_END by adding 30 minutes to TIMESTAMP and formatting it
+way3_2018_data$TIMESTAMP_END <- format(way3_2018_data$TIMESTAMP + minutes(30), "%Y%m%d%H%M")
+
+
+# Create a new column 'HOUR' to store the hour extracted from the TIMESTAMP
+way3_2018_data$HOUR <- hour(way3_2018_data$TIMESTAMP)
+
+# Create a new column 'MONTH' to store the month extracted from the TIMESTAMP
+way3_2018_data$MONTH <- month(way3_2018_data$TIMESTAMP)
+
+# Create a new column 'DAY_OF_YEAR' to store the day of the year extracted from the TIMESTAMP
+way3_2018_data$DOY <- yday(way3_2018_data$TIMESTAMP)
+
+
+# Assuming way3_2018_data is your dataset
+print(way3_2018_data[1:4, 1:4])
+
+
+
+```
+
+#### Consistent Variable names:
+1. Filter out the variables that are relevant \
+2. From the description find the common variables \
+
+source of eddypro: 'https://www.licor.com/env/support/EddyPro/topics/output-files-full-output.html" \
+
+TIMESTAMP == TIMESTAMP \
+TIMESTAMP_START == created from TIMESTAMP \
+TIMESTAMP_END == created from TIMESTAMP \
+FETCH_70 ==  	x_70% \
+FETCH_80 == NF \
+FETCH_90 == x_90% \
+FETCH_FILTER == NF \
+FETCH_MAX == x_peak \
+CH4 == ch4_mole_fraction \
+CH4_MIXING_RATIO == ch4_mixing_ratio \
+CO2 == co2_mole_fraction \
+CO2_MIXING_RATIO == co2_mixing_ratio \
+FC == co2_flux \
+FCH4 == ch4_flux \
+H2O == h2o_mole_fraction \
+H2O_MIXING_RATIO == h2o_mixing_ratio \
+FH2O == h2o_flux \
+G == shf_Avg.1.	/shf_Avg.2./shf_Avg.3.\
+H == H \
+LE == LE \
+SG == NF\
+SH == H_strg \
+SLE == LE_strg \
+PA == air_pressure \
+RH == RH \
+T_SONIC == sonic_temperature \
+T_SONIC_SIGMA == NF\
+GPP == Needs to be derived\
+NEE == Needs to be derived\
+RECO == Needs to be derived\
+FC_SSITC_TEST == qc_co2_flux\
+FCH4_SSITC_TEST == qc_ch4_flux\
+H_SSITC_TEST == qc_H \
+LE_SSITC_TEST == qc_LE \
+TAU_SSITC_TEST == qc_Tau \
+CO2_SIGMA == co2_var\
+SC == co2_strg\
+SCH4 == ch4_strg\
+U_SIGMA == u_var\
+V_SIGMA == v_var \
+W_SIGMA == w_var \
+WD == wind_dir \
+WD_SIGMA == NF\
+WS == wind_speed\
+WS_MAX == max_wind_speed\
+ZL == X_z_d__L\
+TA == air_temperature\
+VPD == VPD \
+P == NF\
+LW_IN == LW_IN_Avg \
+LW_OUT == LW_OUT_Avg \
+PPFD_IN == PAR_IN_Avg\
+PPFD_OUT == PAR_OUT_Avg\
+SW_IN == SW_IN_Avg\
+SW_OUT == SW_OUT_Avg\
+SWC= SWC_1_1_1\
+TS == TS_2_1_2/ TS_2_2_2\
+WTD == WTD_Avg/ Lvl_m_Avg \
+MO_LENGTH == L \
+TAU == Tau \
+USTAR == u*/u_ \
+
+```{r pressure, echo=FALSE}
+library(ggplot2)
+library(viridis)
+ggplot(way3_2018_data, aes(x = HOUR, y = SW_IN_Avg, color = (DOY))) +
+  geom_point() +
+  scale_color_viridis_c() +
+  labs(title = "SW_IN_Avg vs HOUR",
+       x = "Hour of the Day",
+       y = "SW_IN_Avg",
+       color = "Day of the Year") +
+  theme_minimal()
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+## Change the name of the columns
+```{r}
+# Assuming way3_2018_data is your DataFrame
+library(tidyverse)
+way3_2018_data_filtered <- way3_2018_data %>%
+  select(
+    TIMESTAMP_START,
+    TIMESTAMP_END,
+    `x_70_`,
+    `x_90_`,
+    x_peak,
+    ch4_mole_fraction,
+    ch4_mixing_ratio,
+    co2_mole_fraction,
+    co2_mixing_ratio,
+    co2_flux,
+    ch4_flux,
+    h2o_mole_fraction,
+    h2o_mixing_ratio,
+    h2o_flux,
+    #`shf_Avg.1./shf_Avg.2./shf_Avg.3.`,
+    H,
+    LE,
+    #NF,  # Duplicate NF keys are ignored
+    H_strg,
+    LE_strg,
+    air_pressure,
+    RH,
+    sonic_temperature,
+    #NF,  # Duplicate NF keys are ignored
+    #`Needs to be derived`,  # Duplicate "Needs to be derived" are ignored
+    qc_co2_flux,
+    qc_ch4_flux,
+    qc_H,
+    qc_LE,
+    qc_Tau,
+    co2_var,
+    co2_strg,
+    ch4_strg,
+    u_var,
+    v_var,
+    w_var,
+    wind_dir,
+    #NF,  # Duplicate NF keys are ignored
+    wind_speed,
+    max_wind_speed,
+    X_z_d__L,
+    air_temperature,
+    VPD,
+    #NF,  # Duplicate NF keys are ignored
+    LW_IN_Avg,
+    LW_OUT_Avg,
+    PAR_IN_Avg,
+    PAR_OUT_Avg,
+    SW_IN_Avg,
+    SW_OUT_Avg,
+    SWC_1_1_1,
+    #`TS_2_1_2/TS_2_2_2`,
+    #`WTD_Avg/Lvl_m_Avg`,
+    L,
+    Tau
+    #`u*/u_`
+  )
+
+# Rename the filtered columns
+way3_2018_data_f1iltered <- way3_2018_data_filtered %>%
+  rename(
+    TIMESTAMP_START = TIMESTAMP_START,
+    TIMESTAMP_END = TIMESTAMP_END,
+    FETCH_70 = `x_70_`,
+    FETCH_90 = `x_90_`,
+    FETCH_MAX = x_peak,
+    CH4 = ch4_mole_fraction,
+    CH4_MIXING_RATIO = ch4_mixing_ratio,
+    CO2 = co2_mole_fraction,
+    CO2_MIXING_RATIO = co2_mixing_ratio,
+    FC = co2_flux,
+    FCH4 = ch4_flux,
+    H2O = h2o_mole_fraction,
+    H2O_MIXING_RATIO = h2o_mixing_ratio,
+    FH2O = h2o_flux,
+    #G = `shf_Avg.1./shf_Avg.2./shf_Avg.3.`,
+    H = H,
+    LE = LE,
+    #SG = NF,  # Duplicate NF keys are ignored
+    SH = H_strg,
+    SLE = LE_strg,
+    PA = air_pressure,
+    RH = RH,
+    T_SONIC = sonic_temperature,
+    #T_SONIC_SIGMA = NF,  # Duplicate NF keys are ignored
+    #GPP = `Needs to be derived`,  # Duplicate "Needs to be derived" are ignored
+    #NEE = `Needs to be derived`,  # Duplicate "Needs to be derived" are ignored
+    #RECO = `Needs to be derived`,  # Duplicate "Needs to be derived" are ignored
+    FC_SSITC_TEST = qc_co2_flux,
+    FCH4_SSITC_TEST = qc_ch4_flux,
+    H_SSITC_TEST = qc_H,
+    LE_SSITC_TEST = qc_LE,
+    TAU_SSITC_TEST = qc_Tau,
+    CO2_SIGMA = co2_var,
+    SC = co2_strg,
+    SCH4 = ch4_strg,
+    U_SIGMA = u_var,
+    V_SIGMA = v_var,
+    W_SIGMA = w_var,
+    WD = wind_dir,
+    #WD_SIGMA = NF,  # Duplicate NF keys are ignored
+    WS = wind_speed,
+    WS_MAX = max_wind_speed,
+    ZL = X_z_d__L,
+    TA = air_temperature,
+    VPD = VPD,
+    #P = NF,  # Duplicate NF keys are ignored
+    LW_IN = LW_IN_Avg,
+    LW_OUT = LW_OUT_Avg,
+    PPFD_IN = PAR_IN_Avg,
+    PPFD_OUT = PAR_OUT_Avg,
+    SW_IN = SW_IN_Avg,
+    SW_OUT = SW_OUT_Avg,
+    SWC = SWC_1_1_1,
+    #TS = `TS_2_1_2/TS_2_2_2`,
+    #WTD = `WTD_Avg/Lvl_m_Avg`,
+    MO_LENGTH = L,
+    TAU = Tau
+    #USTAR = `u*/u_`
+  )
+
+```
+# Export the data
+```{r}
+# Create the directory if it doesn't exist
+# Convert TIMESTAMP_START and TIMESTAMP_END to character type
+way3_2018_data_f1iltered$TIMESTAMP_START <- as.character(way3_2018_data_f1iltered$TIMESTAMP_START)
+way3_2018_data_f1iltered$TIMESTAMP_END <- as.character(way3_2018_data_f1iltered$TIMESTAMP_END)
+
+# Replace NaN and NA values with -9999
+way3_2018_data_f1iltered[is.na(way3_2018_data_f1iltered)] <- -9999
+# Define custom function to handle NaN values in data frames
+is.nan.data.frame <- function(x) {
+  do.call(cbind, lapply(x, is.nan))
+}
+# Replace NaN with -9999
+way3_2018_data_f1iltered[is.nan.data.frame(way3_2018_data_f1iltered)] <- -9999
+
+
+dir.create("C:/Users/rbmahbub/Documents/RProjects/AmerifluxDataSubmission_LandscapeFlux/Data/AFguidedSubmitted/Way3", showWarnings = FALSE)
+
+# Specify the file path for saving
+file_path <- "C:/Users/rbmahbub/Documents/RProjects/AmerifluxDataSubmission_LandscapeFlux/Data/AFguidedSubmitted/Way3/way3_2018_data.csv"
+
+# Save the dataframe
+write.csv(way3_2018_data_f1iltered, file = file_path, row.names = FALSE)
+
+# Confirmation message
+cat("way3_2018_data saved successfully.\n")
+
+
+```
+
+# Before saving the files these information needs to be checked 
+Precipitation comes from way 4 so get the precipitation data from way 4 for each year and put them in way 4
+The G data that we obtain 
+Create a fetch filter column where "You can make this by using ~270+/-85 degrees as 1 (keep it) and other wind directions as 0 (discard it)"
+We have a how-to, for G, I'll look for it if you don't remember seeing it
+
+
+
+# Read all way 3 and way 4 files 
+Check if they have same number of columns
+
+Check if they have same columns
+
+Check if they have same serialized columns 
+
+```{r}
+# Load necessary libraries
+# Load necessary libraries
+library(dplyr)
+
+# Function to read all files and return a list of dataframes
+read_files <- function(file_paths) {
+  lapply(file_paths, read.csv, stringsAsFactors = FALSE)
+}
+
+# Function to print the number of rows and columns for each dataframe
+print_dimensions <- function(data_list, file_names) {
+  for (i in seq_along(data_list)) {
+    rows <- nrow(data_list[[i]])
+    cols <- ncol(data_list[[i]])
+    cat("File:", file_names[i], "- Rows:", rows, "- Columns:", cols, "\n")
+  }
+}
+
+# Specify the file paths for way 3 and way 4 files
+way3_dir <- "C:/Users/rbmahbub/Documents/RProjects/AmerifluxDataSubmission_LandscapeFlux/Data/Way3"
+way4_dir <- "C:/Users/rbmahbub/Documents/RProjects/AmerifluxDataSubmission_LandscapeFlux/Data/Way4"
+
+way3_files <- list.files(path = way3_dir, pattern = "*.csv", full.names = TRUE)
+way4_files <- list.files(path = way4_dir, pattern = "*.csv", full.names = TRUE)
+
+# Read all files
+way3_data <- read_files(way3_files)
+way4_data <- read_files(way4_files)
+
+# Print the number of rows and columns for each file
+print_dimensions(way3_data, basename(way3_files))
+print_dimensions(way4_data, basename(way4_files))
+
+# Function to check if all dataframes in a list have the same number of columns
+check_same_num_columns <- function(data_list) {
+  num_columns <- sapply(data_list, ncol)
+  return(length(unique(num_columns)) == 1)
+}
+
+# Function to check if all dataframes in a list have the same column names
+check_same_columns <- function(data_list) {
+  column_names <- lapply(data_list, colnames)
+  return(length(unique(column_names)) == 1)
+}
+
+# Function to check if all dataframes in a list have the same serialized columns
+check_same_serialized_columns <- function(data_list) {
+  serialized_columns <- sapply(data_list, function(df) paste(colnames(df), collapse = ""))
+  return(length(unique(serialized_columns)) == 1)
+}
+
+# Check way 3 files
+way3_same_num_columns <- check_same_num_columns(way3_data)
+way3_same_columns <- check_same_columns(way3_data)
+way3_same_serialized_columns <- check_same_serialized_columns(way3_data)
+
+# Check way 4 files
+way4_same_num_columns <- check_same_num_columns(way4_data)
+way4_same_columns <- check_same_columns(way4_data)
+way4_same_serialized_columns <- check_same_serialized_columns(way4_data)
+
+# Compare way 3 and way 4 files
+if (way3_same_num_columns && way4_same_num_columns) {
+  way3_num_columns <- ncol(way3_data[[1]])
+  way4_num_columns <- ncol(way4_data[[1]])
+  same_num_columns <- (way3_num_columns == way4_num_columns)
+} else {
+  same_num_columns <- FALSE
+}
+
+if (way3_same_columns && way4_same_columns) {
+  way3_columns <- colnames(way3_data[[1]])
+  way4_columns <- colnames(way4_data[[1]])
+  same_columns <- all(way3_columns %in% way4_columns) && all(way4_columns %in% way3_columns)
+} else {
+  same_columns <- FALSE
+}
+
+if (way3_same_serialized_columns && way4_same_serialized_columns) {
+  way3_serialized_columns <- paste(colnames(way3_data[[1]]), collapse = "")
+  way4_serialized_columns <- paste(colnames(way4_data[[1]]), collapse = "")
+  same_serialized_columns <- (way3_serialized_columns == way4_serialized_columns)
+} else {
+  same_serialized_columns <- FALSE
+}
+
+# Output the results
+results <- list(
+  way3_same_num_columns = way3_same_num_columns,
+  way3_same_columns = way3_same_columns,
+  way3_same_serialized_columns = way3_same_serialized_columns,
+  way4_same_num_columns = way4_same_num_columns,
+  way4_same_columns = way4_same_columns,
+  way4_same_serialized_columns = way4_same_serialized_columns,
+  same_num_columns = same_num_columns,
+  same_columns = same_columns,
+  same_serialized_columns = same_serialized_columns
+)
+
+print(results)
+
+```
+
+```{r}
+# Define the file path
+file_path <- "C:/Users/rbmahbub/Documents/RProjects/AmerifluxDataSubmission_LandscapeFlux/Data/Variable/flux-met_processing_variables_20240612.csv"
+
+# Read the CSV file using read.csv
+data <- read.csv(file_path)
+
+# Print the first few rows of the data to verify
+#head(data)
+nrow(data)
+
+```
+
+
+TIMESTAMP_START
+TIMESTAMP_END
+TIMESTAMP
+way3_data[[1]], 2018
+way3_data[[2]], 2019
+way3_data[[3]], 2020
+way3_data[[4]], 2021
+way3_data[[5]], 2022
+way3_data[[6]], 2023
+
+
+way4_data[[1]], 2018
+way4_data[[2]], 2019
+way4_data[[3]], 2020
+way4_data[[4]], 2021
+way4_data[[5]], 2022
+way4_data[[6]], 2023
+
+
+```{r}
+#colnames(way3_data[[1]])
+```
+
+
+
+```{r}
+# Load necessary libraries
+library(readxl)
+library(dplyr)
+library(openxlsx)
+
+# Define the path to the Excel file
+file_path <- "C:/Users/rbmahbub/Documents/RProjects/AmerifluxDataSubmission_LandscapeFlux/Data/Variable/flux-met_processing_variables_20240612.xlsx"
+
+# Read the third and fourth sheets
+sheet3 <- read_excel(file_path, sheet = 3)
+sheet4 <- read_excel(file_path, sheet = 4)
+
+# Display the first few rows of both sheets to understand their structure
+print("Sheet 3:")
+print(head(sheet3))
+
+print("\nSheet 4:")
+print(head(sheet4))
+
+# Merge the sheets based on the first column
+merged_data <- merge(sheet3, sheet4, by = names(sheet3)[1])
+
+# Display the merged data
+print("Merged Data:")
+print(head(merged_data))
+
+View(merged_data)
+
+# Save the merged data to a new Excel file
+output_file_path <- "C:/Users/rbmahbub/Documents/RProjects/AmerifluxDataSubmission_LandscapeFlux/Data/Variable/merged_data.xlsx"
+write.xlsx(merged_data, output_file_path)
+
+print(paste("Merged data saved to:", output_file_path))
+
+```
+## Units file with the 
+
+```{r}
+# Define the file paths
+file_path_met <- "C:/Users/rbmahbub/Documents/RProjects/AmerifluxDataSubmission_LandscapeFlux/Data/Units_Way3/Way3_Met_units.dat"
+file_path_ec <- "C:/Users/rbmahbub/Documents/RProjects/AmerifluxDataSubmission_LandscapeFlux/Data/Units_Way3/Way3_EC_EC_units.dat"
+file_path_soil <- "C:/Users/rbmahbub/Documents/RProjects/AmerifluxDataSubmission_LandscapeFlux/Data/Units_Way3/Way3_Soil_SOIL_units.dat"
+
+# Read the files into different variables
+way3_met_units <- read.csv(file_path_met, header = FALSE, sep = ",")
+way3_ec_ec_units <- read.csv(file_path_ec, header = FALSE, sep = ",")
+way3_soil_soil_units <- read.csv(file_path_soil, header = FALSE, sep = ",")
+
+# Print the number of columns and column names for each file
+cat("Way3_Met_units:\n")
+cat("Number of columns:", ncol(way3_met_units), "\n")
+print(colnames(way3_met_units))
+
+cat("\nWay3_EC_EC_units:\n")
+cat("Number of columns:", ncol(way3_ec_ec_units), "\n")
+print(colnames(way3_ec_ec_units))
+
+cat("\nWay3_Soil_SOIL_units:\n")
+cat("Number of columns:", ncol(way3_soil_soil_units), "\n")
+print(colnames(way3_soil_soil_units))
+```
+## Saving the files  
+## 
