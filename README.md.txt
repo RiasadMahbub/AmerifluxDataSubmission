@@ -19,8 +19,8 @@ This repository contains the post-processing code and documentation for the four
 ---
 
 ## Sites
-* **US-HRC** — Way 3 (rice paddy, California)
-* **US-HRA** — Way 4 (rice paddy, California)
+* **US-HRC** — Way 3 (rice paddy, Arkansas)
+* **US-HRA** — Way 4 (rice paddy, Arkansas)
 
 ---
 
