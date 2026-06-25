@@ -150,11 +150,11 @@ When PPFD_IN peaks earlier or later than SW_IN and SW_IN_POT, a timestamp offset
 
 **Before correction:**
 
-![Radiation plot before timestamp fix — Way 4, 2019](https://raw.githubusercontent.com/RiasadMahbub/AmerifluxDataSubmission/main/Figure/Way4_2019_RadiationPlotbefore.jpeg)
+![Radiation plot before timestamp fix — Way 4, 2019](https://raw.githubusercontent.com/RiasadMahbub/AmerifluxDataSubmission/main/Figure/Way4_2019_RadiationPlot.jpeg)
 
 **After correction:**
 
-![Radiation plot after timestamp fix — Way 4, 2019](https://raw.githubusercontent.com/RiasadMahbub/AmerifluxDataSubmission/main/Figure/Way4_2019_RadiationPlot.jpeg)
+![Radiation plot after timestamp fix — Way 4, 2019](https://raw.githubusercontent.com/RiasadMahbub/AmerifluxDataSubmission/main/Figure/Way4_2019_RadiationPlotbefore.jpeg)
 
 **All timestamp offsets applied** (positive = shift later, negative = shift earlier):
 
